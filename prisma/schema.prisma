@@ -1,0 +1,171 @@
+// Merven Fashions catalogue schema.
+//
+// Conventions:
+// - Money is stored as integer minor units (KES cents) with an explicit currency code.
+// - Inventory lives on ProductVariant, never on Product.
+// - Products are archived, not deleted, so future Order rows can safely reference variants.
+// - Non-negative checks (stock, prices) are enforced by CHECK constraints in the migrations.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+
+  @@map("category")
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String
+  description String
+  details     String? // fabric, fit and care notes
+  status      ProductStatus    @default(DRAFT)
+  featured    Boolean          @default(false)
+  priceMinor  Int
+  currency    String           @default("KES") @db.Char(3)
+  categoryId  String
+  category    Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  publishedAt DateTime? // first publication; slug is frozen once set
+  archivedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  variants    ProductVariant[]
+  images      ProductImage[]
+
+  @@index([status, featured])
+  @@index([categoryId, status])
+  @@map("product")
+}
+
+model ProductVariant {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku        String   @unique
+  size       String
+  colour     String
+  colourHex  String?
+  priceMinor Int? // overrides Product.priceMinor when set
+  stock      Int      @default(0)
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, size, colour])
+  @@map("product_variant")
+}
+
+model ProductImage {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storageKey String // Supabase object path (products/<productId>/<uuid>.webp), local dev path, or "placeholder:…"
+  url        String
+  alt        String
+  width      Int
+  height     Int
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([productId, sortOrder])
+  @@map("product_image")
+}
+
+// ---------------------------------------------------------------------------
+// Administrator auth (Better Auth tables). There is no public sign-up; admins
+// are created with `pnpm admin:create`.
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id            String              @id
+  name          String
+  email         String              @unique
+  emailVerified Boolean             @default(false)
+  image         String?
+  isActive      Boolean             @default(true) // deactivated admins fail requireAdmin()
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  sessions      AdminSession[]
+  accounts      AdminAccount[]
+
+  @@map("admin_user")
+}
+
+model AdminSession {
+  id        String    @id
+  expiresAt DateTime
+  token     String    @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("admin_session")
+}
+
+model AdminAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("admin_account")
+}
+
+model AdminVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("admin_verification")
+}
+
+// Shared store for auth rate limiting (in-memory limits don't work on serverless).
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rate_limit")
+}

@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ivory: #f7f3ec;
+  --color-ivory-deep: #efe8dc;
+  --color-paper: #fbf9f5;
+  --color-charcoal: #1f1d1b;
+  --color-ink: #2b2825;
+  --color-stone: #6b645c;
+  --color-line: #ddd4c6;
+  --color-oxblood: #6e2b2b;
+  --color-success: #3f5e3a;
+  --color-danger: #9b2c2c;
+
+  --font-display: var(--font-bodoni), "Didot", "Bodoni 72", Georgia, serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+
+  --tracking-label: 0.14em;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--color-ivory);
+    color: var(--color-charcoal);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern", "liga";
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-charcoal);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--color-charcoal);
+    color: var(--color-ivory);
+  }
+}
+
+@layer components {
+  .label {
+    font-size: 0.6875rem;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .link-underline {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25em;
+  }
+  .prose-editorial p + p {
+    margin-top: 1em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

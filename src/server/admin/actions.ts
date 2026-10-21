@@ -1,0 +1,270 @@
+"use server";
+
+import { refresh, updateTag } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import {
+  categoryInputSchema,
+  fieldErrors,
+  formDataToObject,
+  idSchema,
+  imageAltSchema,
+  productInputSchema,
+  stockUpdateSchema,
+  variantInputSchema,
+} from "@/lib/validation/catalogue";
+import { requireAdmin } from "../auth/session";
+import { CATALOGUE_TAG } from "../catalogue/queries";
+import { db } from "../db";
+import { imageStorage } from "../images/storage";
+import { processImageUpload } from "../images/validate";
+import type { ActionState } from "./action-state";
+import * as service from "./catalogue-service";
+
+// Every export here is a server action reachable by POST from any client, so
+// each one starts with requireAdmin() and validates all input with Zod.
+
+function failure(e: unknown): ActionState {
+  if (e instanceof service.DomainError) {
+    return { ok: false, message: e.message, errors: e.field ? { [e.field]: [e.message] } : undefined };
+  }
+  console.error("[admin action]", e);
+  return { ok: false, message: "Something went wrong. Please try again." };
+}
+
+function invalid(error: z.ZodError): ActionState {
+  return { ok: false, message: "Please correct the highlighted fields.", errors: fieldErrors(error) };
+}
+
+function done(message: string): ActionState {
+  updateTag(CATALOGUE_TAG);
+  refresh();
+  return { ok: true, message };
+}
+
+const statusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
+
+// --- Products ----------------------------------------------------------------
+
+export async function createProductAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = productInputSchema.safeParse(formDataToObject(form));
+  if (!parsed.success) return invalid(parsed.error);
+  let id: string;
+  try {
+    ({ id } = await service.createProduct(db, parsed.data));
+  } catch (e) {
+    return failure(e);
+  }
+  updateTag(CATALOGUE_TAG);
+  redirect(`/admin/products/${id}?created=1`);
+}
+
+export async function updateProductAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  const parsed = productInputSchema.safeParse(formDataToObject(form));
+  if (!id.success) return { ok: false, message: "Invalid product." };
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    await service.updateProduct(db, id.data, parsed.data);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Product saved.");
+}
+
+export async function setProductStatusAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  const status = statusSchema.safeParse(form.get("status"));
+  if (!id.success || !status.success) return { ok: false, message: "Invalid request." };
+  try {
+    await service.setProductStatus(db, id.data, status.data);
+  } catch (e) {
+    return failure(e);
+  }
+  const labels = { DRAFT: "Moved to draft.", PUBLISHED: "Published.", ARCHIVED: "Archived." } as const;
+  return done(labels[status.data]);
+}
+
+export async function setProductFeaturedAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  const featured = z.enum(["true", "false"]).safeParse(form.get("featured"));
+  if (!id.success || !featured.success) return { ok: false, message: "Invalid request." };
+  try {
+    await service.setProductFeatured(db, id.data, featured.data === "true");
+  } catch (e) {
+    return failure(e);
+  }
+  return done(featured.data === "true" ? "Featured on the homepage." : "Removed from featured.");
+}
+
+// --- Variants ------------------------------------------------------------------
+
+export async function addVariantAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const productId = idSchema.safeParse(form.get("productId"));
+  const parsed = variantInputSchema.safeParse(formDataToObject(form));
+  if (!productId.success) return { ok: false, message: "Invalid product." };
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    await service.addVariant(db, productId.data, parsed.data);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Variant added.");
+}
+
+export async function updateVariantAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const variantId = idSchema.safeParse(form.get("variantId"));
+  const parsed = variantInputSchema.safeParse(formDataToObject(form));
+  if (!variantId.success) return { ok: false, message: "Invalid variant." };
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    await service.updateVariant(db, variantId.data, parsed.data);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Variant saved.");
+}
+
+export async function setVariantStockAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = stockUpdateSchema.safeParse(formDataToObject(form));
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    await service.setVariantStock(db, parsed.data.variantId, parsed.data.stock);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Stock updated.");
+}
+
+// --- Images ----------------------------------------------------------------------
+
+export async function uploadImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const productId = idSchema.safeParse(form.get("productId"));
+  const alt = imageAltSchema.safeParse({ alt: form.get("alt") });
+  const file = form.get("file");
+  if (!productId.success) return { ok: false, message: "Invalid product." };
+  if (!alt.success) return invalid(alt.error);
+  if (!(file instanceof Blob)) return { ok: false, message: "Choose an image to upload.", errors: { file: ["Choose an image"] } };
+
+  try {
+    await service.assertCanAddImage(db, productId.data);
+  } catch (e) {
+    return failure(e);
+  }
+  const processed = await processImageUpload(file);
+  if (!processed.ok) return { ok: false, message: processed.error, errors: { file: [processed.error] } };
+
+  const storage = imageStorage();
+  let stored: { key: string; url: string };
+  try {
+    stored = await storage.put(processed.image, { productId: productId.data });
+  } catch (e) {
+    return failure(e);
+  }
+  try {
+    await service.addProductImage(db, productId.data, {
+      ...stored,
+      width: processed.image.width,
+      height: processed.image.height,
+      alt: alt.data.alt,
+    });
+  } catch (e) {
+    await storage.remove(stored.key).catch(() => undefined);
+    return failure(e);
+  }
+  return done("Image uploaded.");
+}
+
+export async function updateImageAltAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const imageId = idSchema.safeParse(form.get("imageId"));
+  const alt = imageAltSchema.safeParse({ alt: form.get("alt") });
+  if (!imageId.success) return { ok: false, message: "Invalid image." };
+  if (!alt.success) return invalid(alt.error);
+  try {
+    await service.updateImageAlt(db, imageId.data, alt.data.alt);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Image description saved.");
+}
+
+export async function moveImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const imageId = idSchema.safeParse(form.get("imageId"));
+  const direction = z.enum(["up", "down"]).safeParse(form.get("direction"));
+  if (!imageId.success || !direction.success) return { ok: false, message: "Invalid request." };
+  try {
+    await service.moveImage(db, imageId.data, direction.data);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Image order updated.");
+}
+
+export async function deleteImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const imageId = idSchema.safeParse(form.get("imageId"));
+  if (!imageId.success) return { ok: false, message: "Invalid image." };
+  try {
+    const { storageKey } = await service.deleteImage(db, imageId.data);
+    await imageStorage()
+      .remove(storageKey)
+      .catch((e) => console.error("[image cleanup]", e));
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Image removed.");
+}
+
+// --- Categories ----------------------------------------------------------------------
+
+export async function createCategoryAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = categoryInputSchema.safeParse(formDataToObject(form));
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    await service.createCategory(db, parsed.data);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Category created.");
+}
+
+export async function updateCategoryAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  const parsed = categoryInputSchema.safeParse(formDataToObject(form));
+  if (!id.success) return { ok: false, message: "Invalid category." };
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    await service.updateCategory(db, id.data, parsed.data);
+  } catch (e) {
+    return failure(e);
+  }
+  return done("Category saved.");
+}
+
+export async function deleteCategoryAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  const rawTarget = form.get("moveProductsTo");
+  const moveTo = rawTarget ? idSchema.safeParse(rawTarget) : null;
+  if (!id.success) return { ok: false, message: "Invalid category." };
+  if (moveTo && !moveTo.success) return { ok: false, message: "Invalid destination category." };
+  let moved = 0;
+  try {
+    ({ moved } = await service.deleteCategory(db, id.data, moveTo?.data ?? null));
+  } catch (e) {
+    return failure(e);
+  }
+  return done(moved ? `Category deleted. ${moved} product${moved === 1 ? "" : "s"} moved.` : "Category deleted.");
+}
