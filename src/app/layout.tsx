@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Bodoni_Moda, Instrument_Sans } from "next/font/google";
+import { Cormorant_Garamond, Instrument_Sans } from "next/font/google";
 import { site } from "@/content/site";
 import { siteUrl } from "@/env";
 import "./globals.css";
 
-const bodoni = Bodoni_Moda({
-  variable: "--font-bodoni",
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
   style: ["normal", "italic"],
   display: "swap",
 });
@@ -26,12 +27,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f7f3ec",
+  themeColor: "#f3efe6",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-KE" className={`${bodoni.variable} ${instrument.variable} antialiased`}>
+    <html lang="en-KE" className={`${cormorant.variable} ${instrument.variable} antialiased`}>
       <body className="flex min-h-dvh flex-col">{children}</body>
     </html>
   );

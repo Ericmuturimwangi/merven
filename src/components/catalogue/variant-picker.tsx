@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { formatKES } from "@/lib/money";
 import { compareSizes } from "@/lib/sizes";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
@@ -13,21 +13,23 @@ type Props = {
   priceToMinor: number;
   variants: PublicVariant[];
   whatsappNumber: string;
+  /** Rendered between the price and the options (the short description). */
+  children?: ReactNode;
 };
 
-export function VariantPicker({ productName, productUrl, priceFromMinor, priceToMinor, variants, whatsappNumber }: Props) {
+export function VariantPicker({ productName, productUrl, priceFromMinor, priceToMinor, variants, whatsappNumber, children }: Props) {
   const colours = useMemo(() => {
     const seen = new Map<string, string | null>();
     for (const v of variants) if (!seen.has(v.colour)) seen.set(v.colour, v.colourHex);
     return [...seen.entries()].map(([name, hex]) => ({ name, hex }));
   }, [variants]);
-
-  const [colour, setColour] = useState<string | null>(colours.length === 1 ? colours[0].name : null);
-  const [size, setSize] = useState<string | null>(null);
-
   const sizes = useMemo(() => [...new Set(variants.map((v) => v.size))].sort(compareSizes), [variants]);
-  const find = (c: string | null, s: string | null) => variants.find((v) => v.colour === c && v.size === s) ?? null;
-  const selected = find(colour, size);
+
+  // A single option needs no decision, so preselect it (e.g. "One size").
+  const [colour, setColour] = useState<string | null>(colours.length === 1 ? colours[0].name : null);
+  const [size, setSize] = useState<string | null>(sizes.length === 1 ? sizes[0] : null);
+
+  const selected = variants.find((v) => v.colour === colour && v.size === size) ?? null;
   const colourAvailable = (c: string) => variants.some((v) => v.colour === c && v.available);
   const sizeState = (s: string): "available" | "sold-out" | "unavailable" => {
     const matches = variants.filter((v) => v.size === s && (colour === null || v.colour === colour));
@@ -35,34 +37,37 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
     return matches.some((v) => v.available) ? "available" : "sold-out";
   };
 
-  const price = selected ? selected.priceMinor : null;
+  const isRange = priceFromMinor !== priceToMinor;
   const href = buildWhatsAppUrl(whatsappNumber, {
     productName,
     productUrl,
-    priceMinor: price ?? priceFromMinor,
-    size: selected?.size ?? size,
-    colour: selected?.colour ?? colour,
-    sku: selected?.sku,
+    priceMinor: selected?.priceMinor ?? priceFromMinor,
+    priceIsFrom: !selected && isRange,
+    size,
+    colour,
   });
 
   let status: string;
-  if (!colour || !size) status = "Choose a colour and size to check availability.";
-  else if (!selected) status = `${size} isn't made in ${colour}.`;
-  else if (!selected.available) status = `${colour}, size ${size} is sold out. Ask us about restocks.`;
+  if (!colour && !size) status = "Choose a colour and size to check availability.";
+  else if (!colour) status = "Choose a colour.";
+  else if (!size) status = "Choose a size.";
+  else if (!selected) status = `Size ${size} isn't available in ${colour}.`;
+  else if (!selected.available) status = `${colour}, size ${size} is sold out. You can still ask us about a restock.`;
   else if (selected.lowStock) status = `${colour}, size ${size}: only a few left.`;
-  else status = `${colour}, size ${size}: in stock.`;
+  else status = `${colour}, size ${size}: available.`;
 
   return (
-    <div className="space-y-8">
-      <p className="text-xl" aria-live="polite">
-        {price !== null ? formatKES(price) : priceFromMinor === priceToMinor ? formatKES(priceFromMinor) : `From ${formatKES(priceFromMinor)}`}
+    <div className="space-y-7">
+      <p className="text-lg text-charcoal" aria-live="polite">
+        {selected ? formatKES(selected.priceMinor) : isRange ? `From ${formatKES(priceFromMinor)}` : formatKES(priceFromMinor)}
       </p>
+      {children}
 
       <fieldset>
-        <legend className="label mb-3 text-stone">
-          Colour{colour && <span className="ml-2 normal-case tracking-normal text-charcoal">{colour}</span>}
+        <legend className="mb-3 text-sm text-stone">
+          Colour{colour && <span className="ml-2 text-charcoal">{colour}</span>}
         </legend>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           {colours.map((c) => {
             const on = c.name === colour;
             const avail = colourAvailable(c.name);
@@ -72,7 +77,7 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
                 type="button"
                 aria-pressed={on}
                 onClick={() => setColour(c.name)}
-                className={`flex items-center gap-2 border px-3 py-2 text-sm ${on ? "border-charcoal" : "border-line hover:border-stone"} ${avail ? "" : "text-stone line-through"}`}
+                className={`flex min-h-11 items-center gap-2 border px-3 text-sm transition-colors ${on ? "border-charcoal bg-white" : "border-line hover:border-stone"} ${avail ? "" : "text-stone line-through"}`}
               >
                 {c.hex && <span aria-hidden className="h-4 w-4 rounded-full border border-line" style={{ backgroundColor: c.hex }} />}
                 {c.name}
@@ -84,8 +89,10 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
       </fieldset>
 
       <fieldset>
-        <legend className="label mb-3 text-stone">Size</legend>
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+        <legend className="mb-3 text-sm text-stone">
+          Size{size && <span className="ml-2 text-charcoal">{size}</span>}
+        </legend>
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
           {sizes.map((s) => {
             const state = sizeState(s);
             const on = s === size;
@@ -96,7 +103,7 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
                 aria-pressed={on}
                 disabled={state === "unavailable"}
                 onClick={() => setSize(s)}
-                className={`border py-3 text-sm disabled:cursor-not-allowed disabled:opacity-30 ${on ? "border-charcoal bg-charcoal text-ivory" : "border-line hover:border-stone"} ${state === "sold-out" && !on ? "text-stone line-through" : ""}`}
+                className={`min-h-11 border px-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${on ? "border-charcoal bg-charcoal text-white" : "border-line hover:border-stone"} ${state === "sold-out" && !on ? "text-stone line-through" : ""}`}
               >
                 {s}
                 {state === "sold-out" && <span className="sr-only"> (sold out)</span>}
@@ -110,16 +117,20 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
         {status}
       </p>
 
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex w-full items-center justify-center gap-3 bg-charcoal px-6 py-4 text-sm tracking-wide text-ivory transition-colors hover:bg-ink"
-      >
-        {selected && !selected.available ? "Ask about restock on WhatsApp" : "Enquire on WhatsApp"}
-      </a>
-      <p className="text-xs text-stone">
-        Opens WhatsApp with a message about this piece. Nothing is sent until you press send.
+      {/* On phones the enquiry button stays reachable while scrolling the options. */}
+      <div className="sticky bottom-0 z-10 -mx-4 border-t border-line bg-ivory/95 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-h-12 w-full items-center justify-center bg-forest px-6 text-sm tracking-wide text-white transition-colors hover:bg-forest-deep"
+        >
+          {selected && !selected.available ? "Ask about a restock on WhatsApp" : "Enquire on WhatsApp"}
+        </a>
+      </div>
+      <p className="text-xs leading-relaxed text-stone">
+        Opens WhatsApp with this piece, your size and colour already written in. Nothing is sent until you press send. An
+        enquiry isn&rsquo;t an order: we&rsquo;ll confirm availability, delivery and payment with you first.
       </p>
     </div>
   );

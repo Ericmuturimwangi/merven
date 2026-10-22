@@ -45,7 +45,15 @@ export type PublicProduct = Omit<PublicProductCard, "image" | "hoverImage"> & {
   updatedAt: Date;
 };
 
-export type PublicCategory = { id: string; name: string; slug: string; description: string | null; productCount: number };
+export type PublicCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  productCount: number;
+  /** First image of the category's featured (else newest) published product. */
+  cover: PublicImage | null;
+};
 
 const cardSelect = {
   id: true,
@@ -102,11 +110,17 @@ export async function listCategories(prisma: PrismaClient): Promise<PublicCatego
       slug: true,
       description: true,
       _count: { select: { products: { where: publicProductWhere() } } },
+      products: {
+        where: publicProductWhere({ images: { some: {} } }),
+        orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
+        take: 1,
+        select: { images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true, alt: true, width: true, height: true } } },
+      },
     },
   });
   return rows
     .filter((c) => c._count.products > 0)
-    .map(({ _count, ...c }) => ({ ...c, productCount: _count.products }));
+    .map(({ _count, products, ...c }) => ({ ...c, productCount: _count.products, cover: products[0]?.images[0] ?? null }));
 }
 
 export async function getCategoryBySlug(prisma: PrismaClient, slug: string) {

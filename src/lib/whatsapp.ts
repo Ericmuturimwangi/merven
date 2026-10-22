@@ -4,9 +4,10 @@ export type WhatsAppEnquiry = {
   productName: string;
   productUrl: string;
   priceMinor: number;
+  /** True when no variant is chosen and prices differ between variants. */
+  priceIsFrom?: boolean;
   size?: string | null;
   colour?: string | null;
-  sku?: string | null;
 };
 
 /** Digits only, 8–15 long (E.164 without "+"). Accepts "+254 712 345 678" style input. */
@@ -23,12 +24,23 @@ export function isKenyanMobile(digits: string): boolean {
   return /^254[17]\d{8}$/.test(digits);
 }
 
+const NOT_SELECTED = "not selected yet";
+
+/**
+ * Prefilled enquiry text. Unchosen options are stated explicitly rather than
+ * left out, so the boutique never has to guess which size or colour was meant.
+ */
 export function buildEnquiryMessage(e: WhatsAppEnquiry): string {
-  const lines = [`Hello Merven Fashions, I'd like to ask about the ${e.productName} (${formatKES(e.priceMinor)}).`];
-  const options = [e.size && `Size: ${e.size}`, e.colour && `Colour: ${e.colour}`, e.sku && `Ref: ${e.sku}`].filter(Boolean);
-  if (options.length) lines.push(options.join(" · "));
-  lines.push(e.productUrl);
-  return lines.join("\n");
+  return [
+    `Hello Merven Fashions, I'm interested in ${e.productName}.`,
+    "",
+    `Price: ${e.priceIsFrom ? "from " : ""}${formatKES(e.priceMinor)}`,
+    `Size: ${e.size?.trim() || NOT_SELECTED}`,
+    `Colour: ${e.colour?.trim() || NOT_SELECTED}`,
+    `Product link: ${e.productUrl}`,
+    "",
+    "Please confirm availability and delivery details.",
+  ].join("\n");
 }
 
 /**
@@ -38,4 +50,17 @@ export function buildEnquiryMessage(e: WhatsAppEnquiry): string {
 export function buildWhatsAppUrl(phone: string, enquiry: WhatsAppEnquiry): string {
   const number = normaliseWhatsAppNumber(phone);
   return `https://wa.me/${number}?text=${encodeURIComponent(buildEnquiryMessage(enquiry))}`;
+}
+
+/** "254720630112" -> "+254 720 630 112" for display; other countries get "+" and digits. */
+export function formatWhatsAppNumber(phone: string): string {
+  const n = normaliseWhatsAppNumber(phone);
+  const ke = n.match(/^(254)(\d{3})(\d{3})(\d{3})$/);
+  return ke ? `+${ke[1]} ${ke[2]} ${ke[3]} ${ke[4]}` : `+${n}`;
+}
+
+/** A general (not product-specific) chat link for the footer and help pages. */
+export function buildContactWhatsAppUrl(phone: string): string {
+  const text = "Hello Merven Fashions, I have a question.";
+  return `https://wa.me/${normaliseWhatsAppNumber(phone)}?text=${encodeURIComponent(text)}`;
 }

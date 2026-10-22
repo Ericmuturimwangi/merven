@@ -19,7 +19,8 @@
     "db:backup": "bash scripts/backup.sh",
     "db:restore-test": "bash scripts/restore-test.sh",
     "storage:setup": "tsx scripts/setup-supabase-storage.ts",
-    "storage:verify": "tsx scripts/verify-supabase-storage.ts"
+    "storage:verify": "tsx scripts/verify-supabase-storage.ts",
+    "catalogue:patch": "tsx scripts/apply-catalogue-patch.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.1",

@@ -42,6 +42,8 @@ describe.skipIf(!hasTestDb)("public catalogue visibility", () => {
     const cats = await repo.listCategories(prisma);
     expect(cats).toHaveLength(1);
     expect(cats[0]).toMatchObject({ slug: dresses.slug, productCount: 1 });
+    // The cover photo comes from the published product, never a featured draft.
+    expect(cats[0].cover?.url).toBe("/placeholders/live-dress-0.webp");
   });
 
   it("reflects status changes immediately", async () => {

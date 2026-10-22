@@ -69,20 +69,28 @@ async function ProductContent({ params }: { params: PageProps<"/products/[slug]"
   const product = await getProduct(slug);
   if (!product) notFound();
 
+  const description = (
+    <div className="space-y-3 text-[0.95rem] leading-relaxed text-ink">
+      {product.description.split(/\n{2,}/).map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  );
+
   return (
-    <article className="grid gap-10 lg:grid-cols-12 lg:gap-14">
+    <article className="grid gap-8 lg:grid-cols-12 lg:gap-14">
       <ProductJsonLd product={product} />
       <div className="lg:col-span-7">
         <ProductGallery images={product.images} name={product.name} />
       </div>
-      <div className="lg:col-span-5 lg:pt-4">
-        <nav aria-label="Breadcrumb" className="label text-stone">
+      <div className="lg:col-span-5 lg:pt-2">
+        <nav aria-label="Breadcrumb" className="text-xs text-stone">
           <Link href="/shop" className="hover:text-charcoal">Shop</Link>
-          <span aria-hidden> / </span>
+          <span aria-hidden className="mx-1.5">/</span>
           <Link href={`/shop/${product.category.slug}`} className="hover:text-charcoal">{product.category.name}</Link>
         </nav>
-        <h1 className="mt-4 font-display text-4xl leading-tight sm:text-5xl">{product.name}</h1>
-        <div className="mt-6">
+        <h1 className="mt-3 font-display text-4xl font-medium leading-[1.05] sm:text-5xl">{product.name}</h1>
+        <div className="mt-4">
           {product.variants.length > 0 ? (
             <VariantPicker
               productName={product.name}
@@ -91,32 +99,30 @@ async function ProductContent({ params }: { params: PageProps<"/products/[slug]"
               priceToMinor={product.priceToMinor}
               variants={product.variants}
               whatsappNumber={serverEnv().WHATSAPP_NUMBER}
-            />
+            >
+              {description}
+            </VariantPicker>
           ) : (
-            <p className="text-stone">Currently unavailable.</p>
+            <div className="space-y-5">
+              {description}
+              <p className="text-stone">Currently unavailable.</p>
+            </div>
           )}
         </div>
-        <div className="mt-12 space-y-8 border-t border-line pt-8">
-          <section>
-            <h2 className="label mb-3 text-stone">Description</h2>
-            <div className="prose-editorial leading-relaxed text-ink">
-              {product.description.split(/\n{2,}/).map((p, i) => (
-                <p key={i}>{p}</p>
-              ))}
-            </div>
-          </section>
+        <div className="mt-10 divide-y divide-line border-y border-line">
           {product.details && (
-            <section>
-              <h2 className="label mb-3 text-stone">Fabric &amp; care</h2>
+            <section className="py-5">
+              <h2 className="mb-2 text-sm font-medium">Details</h2>
               <p className="whitespace-pre-line text-sm leading-relaxed text-ink">{product.details}</p>
             </section>
           )}
-          <section>
-            <h2 className="label mb-3 text-stone">Delivery</h2>
-            <p className="text-sm text-ink">
-              {delivery.summary}{" "}
+          <section className="py-5">
+            <h2 className="mb-2 text-sm font-medium">Delivery &amp; ordering</h2>
+            <p className="text-sm leading-relaxed text-ink">
+              {delivery.summary} Send us an enquiry on WhatsApp and we&rsquo;ll confirm availability, delivery and payment
+              with you.{" "}
               <Link href="/delivery" className="link-underline">
-                See delivery times
+                How ordering works
               </Link>
             </p>
           </section>
@@ -128,7 +134,7 @@ async function ProductContent({ params }: { params: PageProps<"/products/[slug]"
 
 export default function ProductPage({ params }: PageProps<"/products/[slug]">) {
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-14">
+    <div className="mx-auto max-w-7xl px-4 pb-12 pt-4 sm:px-6 lg:px-10 lg:py-12">
       <Suspense
         fallback={
           <div className="grid gap-10 lg:grid-cols-12">

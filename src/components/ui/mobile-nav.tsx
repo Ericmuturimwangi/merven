@@ -14,10 +14,10 @@ export function MobileNav({ links }: { links: { href: string; label: string }[] 
   }, [open]);
 
   return (
-    <div className="lg:hidden">
+    <div className="justify-self-start lg:hidden">
       <button
         type="button"
-        className="text-sm"
+        className="-ml-2 min-h-11 px-2 text-sm"
         aria-expanded={open}
         aria-controls="mobile-menu"
         onClick={() => setOpen((o) => !o)}
@@ -25,11 +25,11 @@ export function MobileNav({ links }: { links: { href: string; label: string }[] 
         {open ? "Close" : "Menu"}
       </button>
       {open && (
-        <nav id="mobile-menu" aria-label="Main" className="absolute inset-x-0 top-16 z-40 border-b border-line bg-ivory px-4 pb-8 pt-4">
-          <ul className="space-y-4">
+        <nav id="mobile-menu" aria-label="Main" className="absolute inset-x-0 top-16 z-40 border-b border-line bg-ivory px-4 pb-8 pt-2 shadow-[0_12px_24px_-16px_rgba(40,40,33,0.25)] sm:px-6">
+          <ul className="divide-y divide-line">
             {links.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="font-display text-2xl" onClick={() => setOpen(false)}>
+                <Link href={l.href} className="block py-3 font-display text-2xl" onClick={() => setOpen(false)}>
                   {l.label}
                 </Link>
               </li>
