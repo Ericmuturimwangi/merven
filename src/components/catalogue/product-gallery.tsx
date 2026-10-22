@@ -6,6 +6,10 @@ import type { PublicImage } from "@/server/catalogue/repository";
 
 // The product page shows every photo whole, at its own proportions: no cropping
 // (which could misrepresent length or fit) and no letterboxing.
+// One `sizes` for the phone strip and the desktop view, so the browser picks the
+// same file for both and downloads the first photo only once.
+const GALLERY_SIZES = "(min-width: 1024px) 50vw, (min-width: 640px) 60vw, 85vw";
+
 export function ProductGallery({ images, name }: { images: PublicImage[]; name: string }) {
   const [active, setActive] = useState(0);
   if (images.length === 0) return <div className="aspect-[4/5] bg-ivory-deep" role="img" aria-label={`No photos of ${name} yet`} />;
@@ -26,7 +30,7 @@ export function ProductGallery({ images, name }: { images: PublicImage[]; name: 
               width={img.width}
               height={img.height}
               priority={i === 0}
-              sizes="(min-width: 640px) 60vw, 85vw"
+              sizes={GALLERY_SIZES}
               className="h-auto w-full bg-white"
             />
           </li>
@@ -42,7 +46,7 @@ export function ProductGallery({ images, name }: { images: PublicImage[]; name: 
           width={current.width}
           height={current.height}
           priority
-          sizes="(min-width: 1280px) 45vw, 50vw"
+          sizes={GALLERY_SIZES}
           className="h-auto max-h-[85vh] w-full bg-white object-contain"
         />
       </div>

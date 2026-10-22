@@ -5,6 +5,11 @@ import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 
 export const LOW_STOCK_THRESHOLD = 3;
 
+// Positions can tie (e.g. two uploads at the same position), so every ordering
+// ends with stable tiebreakers. Images follow the admin's order: position, then
+// upload time.
+const IMAGE_ORDER = [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] satisfies Prisma.ProductImageOrderByWithRelationInput[];
+
 export function publicProductWhere(extra: Prisma.ProductWhereInput = {}): Prisma.ProductWhereInput {
   return { AND: [{ status: "PUBLISHED" }, extra] };
 }
@@ -61,7 +66,7 @@ const cardSelect = {
   name: true,
   priceMinor: true,
   category: { select: { name: true, slug: true } },
-  images: { orderBy: { sortOrder: "asc" }, take: 2, select: { url: true, alt: true, width: true, height: true } },
+  images: { orderBy: IMAGE_ORDER, take: 2, select: { url: true, alt: true, width: true, height: true } },
   variants: { where: { active: true }, select: { stock: true, priceMinor: true } },
 } satisfies Prisma.ProductSelect;
 
@@ -90,14 +95,15 @@ function toCard(row: CardRow): PublicProductCard {
   };
 }
 
+/** Listing order. The final `id` tiebreaker keeps pagination stable when prices or dates tie. */
 function orderBy(sort: ProductSort): Prisma.ProductOrderByWithRelationInput[] {
   switch (sort) {
     case "price-asc":
-      return [{ priceMinor: "asc" }, { name: "asc" }];
+      return [{ priceMinor: "asc" }, { name: "asc" }, { id: "asc" }];
     case "price-desc":
-      return [{ priceMinor: "desc" }, { name: "asc" }];
+      return [{ priceMinor: "desc" }, { name: "asc" }, { id: "asc" }];
     default:
-      return [{ publishedAt: "desc" }, { createdAt: "desc" }];
+      return [{ publishedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }];
   }
 }
 
@@ -112,9 +118,9 @@ export async function listCategories(prisma: PrismaClient): Promise<PublicCatego
       _count: { select: { products: { where: publicProductWhere() } } },
       products: {
         where: publicProductWhere({ images: { some: {} } }),
-        orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
+        orderBy: [{ featured: "desc" }, { publishedAt: "desc" }, { id: "asc" }],
         take: 1,
-        select: { images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true, alt: true, width: true, height: true } } },
+        select: { images: { orderBy: IMAGE_ORDER, take: 1, select: { url: true, alt: true, width: true, height: true } } },
       },
     },
   });
@@ -171,7 +177,7 @@ export async function listProducts(prisma: PrismaClient, opts: ListProductsOptio
 export async function listFeaturedProducts(prisma: PrismaClient, limit = 8): Promise<PublicProductCard[]> {
   const rows = await prisma.product.findMany({
     where: publicProductWhere({ featured: true }),
-    orderBy: [{ publishedAt: "desc" }],
+    orderBy: [{ publishedAt: "desc" }, { id: "asc" }],
     take: limit,
     select: cardSelect,
   });
@@ -190,7 +196,7 @@ export async function getProductBySlug(prisma: PrismaClient, slug: string): Prom
       priceMinor: true,
       updatedAt: true,
       category: { select: { name: true, slug: true } },
-      images: { orderBy: { sortOrder: "asc" }, select: { url: true, alt: true, width: true, height: true } },
+      images: { orderBy: IMAGE_ORDER, select: { url: true, alt: true, width: true, height: true } },
       variants: {
         where: { active: true },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -227,6 +233,6 @@ export async function listPublishedSlugs(prisma: PrismaClient) {
   return prisma.product.findMany({
     where: publicProductWhere(),
     select: { slug: true, updatedAt: true },
-    orderBy: { publishedAt: "desc" },
+    orderBy: [{ publishedAt: "desc" }, { id: "asc" }],
   });
 }

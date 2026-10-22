@@ -6,6 +6,8 @@ import { Price } from "./price";
 
 const SIZES = "(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw";
 
+// The hover photo only exists from tablet width up: phones can't hover, and a
+// hidden lazy image is never downloaded, which saves mobile data.
 function CardImage({ img, priority, hover }: { img: PublicImage; priority?: boolean; hover?: boolean }) {
   return (
     <Image
@@ -14,7 +16,7 @@ function CardImage({ img, priority, hover }: { img: PublicImage; priority?: bool
       fill
       priority={priority}
       sizes={SIZES}
-      className={`${imageFit(img.width, img.height) === "cover" ? "object-cover" : "object-contain"} ${hover ? "opacity-0 transition-opacity duration-500 group-hover:opacity-100" : ""}`}
+      className={`${imageFit(img.width, img.height) === "cover" ? "object-cover" : "object-contain"} ${hover ? "hidden opacity-0 transition-opacity duration-500 group-hover:opacity-100 md:block" : ""}`}
     />
   );
 }

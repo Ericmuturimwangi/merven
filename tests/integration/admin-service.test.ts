@@ -119,4 +119,18 @@ describe.skipIf(!hasTestDb)("admin catalogue rules", () => {
     const products = await prisma.product.findMany({ where: { id: { in: [a.id, b.id] } } });
     expect(products.map((p) => p.categoryId)).toEqual([target.id, target.id]);
   });
+
+  it("keeps a category URL stable while it has published products", async () => {
+    const input = { name: "Dresses", description: null, sortOrder: 0 };
+    // No published products yet: the slug can still change.
+    await service.updateCategory(prisma, categoryId, { ...input, slug: "dresses-edit" });
+    const { id } = await service.createProduct(prisma, productInput());
+    await service.addProductImage(prisma, id, { key: "k", url: "/u.webp", width: 800, height: 1000, alt: "Front" });
+    await service.addVariant(prisma, id, variantInput());
+    await service.setProductStatus(prisma, id, "PUBLISHED");
+    await expect(service.updateCategory(prisma, categoryId, { ...input, slug: "something-else" })).rejects.toThrow(/URL can't change/);
+    // Renaming without touching the URL still works.
+    await service.updateCategory(prisma, categoryId, { ...input, name: "The Dress Edit", slug: "dresses-edit" });
+    expect((await prisma.category.findUniqueOrThrow({ where: { id: categoryId } })).slug).toBe("dresses-edit");
+  });
 });

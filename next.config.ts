@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { catalogueRedirects, toNextRedirects } from "./src/content/redirects";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -55,6 +56,9 @@ const nextConfig: NextConfig = {
       // Admin image uploads are capped at 5 MB; leave room for multipart overhead.
       bodySizeLimit: "6mb",
     },
+  },
+  async redirects() {
+    return toNextRedirects(catalogueRedirects);
   },
   async headers() {
     return [

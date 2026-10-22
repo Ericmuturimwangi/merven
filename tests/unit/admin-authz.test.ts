@@ -57,6 +57,7 @@ vi.mock("@/server/db", () => {
 });
 
 const actions = await import("@/server/admin/actions");
+const adminQueries = await import("@/server/admin/queries");
 const actionEntries = Object.entries(actions).filter(([, v]) => typeof v === "function") as [
   string,
   (prev: unknown, form: FormData) => Promise<unknown>,
@@ -141,5 +142,25 @@ describe("admin server action authorisation", () => {
     form.set("stock", "4");
     await actions.setVariantStockAction({ ok: false }, form);
     expect(state.dbCalls).toContain("productVariant.findUnique");
+  });
+});
+
+describe("admin read queries", () => {
+  const reads: [string, () => Promise<unknown>][] = [
+    ["listAdminProducts", () => adminQueries.listAdminProducts({})],
+    ["getAdminProduct", () => adminQueries.getAdminProduct("abc123")],
+    ["listAdminCategories", () => adminQueries.listAdminCategories()],
+    ["getAdminStats", () => adminQueries.getAdminStats()],
+  ];
+
+  it("covers every exported admin query", () => {
+    expect(Object.keys(adminQueries).sort()).toEqual(reads.map(([n]) => n).sort());
+  });
+
+  it.each(reads)("%s exposes nothing (drafts included) without an active admin", async (_name, call) => {
+    state.session = { user: { id: "u1" } };
+    state.adminRow = { id: "u1", name: "x", email: "x@y.z", isActive: false };
+    await expect(call()).rejects.toMatchObject({ url: "/admin/login" });
+    expect(state.dbCalls).toEqual([]);
   });
 });

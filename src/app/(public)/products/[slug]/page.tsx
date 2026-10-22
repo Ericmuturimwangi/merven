@@ -6,6 +6,7 @@ import { ProductGallery } from "@/components/catalogue/product-gallery";
 import { VariantPicker } from "@/components/catalogue/variant-picker";
 import { delivery, site } from "@/content/site";
 import { serverEnv, siteUrl } from "@/env";
+import { productJsonLd, serializeJsonLd } from "@/lib/structured-data";
 import { getProduct, getPublishedSlugs } from "@/server/catalogue/queries";
 import type { PublicProduct } from "@/server/catalogue/repository";
 
@@ -40,27 +41,7 @@ function absolute(url: string) {
 }
 
 function ProductJsonLd({ product }: { product: PublicProduct }) {
-  const data = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: product.name,
-    description: product.description,
-    image: product.images.map((i) => absolute(i.url)),
-    category: product.category.name,
-    brand: { "@type": "Brand", name: site.name },
-    offers: product.variants.map((v) => ({
-      "@type": "Offer",
-      sku: v.sku,
-      name: `${product.name} — ${v.colour}, ${v.size}`,
-      price: (v.priceMinor / 100).toFixed(2),
-      priceCurrency: "KES",
-      availability: v.available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      url: absolute(`/products/${product.slug}`),
-      areaServed: { "@type": "Country", name: "Kenya" },
-    })),
-  };
-  // Escape "<" so product text can never close the script element.
-  const json = JSON.stringify(data).replace(/</g, "\\u003c");
+  const json = serializeJsonLd(productJsonLd(product, { siteUrl: siteUrl(), sellerName: site.name }));
   return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: json }} />;
 }
 

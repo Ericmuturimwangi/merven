@@ -292,8 +292,16 @@ export async function createCategory(prisma: PrismaClient, input: CategoryInput)
 }
 
 export async function updateCategory(prisma: PrismaClient, id: string, input: CategoryInput) {
-  const current = await prisma.category.findUnique({ where: { id }, select: { slug: true } });
+  const current = await prisma.category.findUnique({
+    where: { id },
+    select: { slug: true, _count: { select: { products: { where: { status: "PUBLISHED" } } } } },
+  });
   if (!current) throw new DomainError("Category not found.");
+  // Like product slugs, a live category URL stays stable: changing it would
+  // break shared /shop links (there is no automatic redirect).
+  if (input.slug && input.slug !== current.slug && current._count.products > 0) {
+    throw new DomainError("The URL can't change while this category has published products.", "slug");
+  }
   try {
     return await prisma.category.update({
       where: { id },
