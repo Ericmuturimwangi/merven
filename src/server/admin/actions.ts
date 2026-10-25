@@ -1,5 +1,6 @@
 "use server";
 
+import { safeErrorFields } from "@/lib/error-report";
 import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -20,6 +21,12 @@ import { imageStorage } from "../images/storage";
 import { processImageUpload } from "../images/validate";
 import type { ActionState } from "./action-state";
 import * as service from "./catalogue-service";
+import { configuredMailer } from "../notifications/mailer";
+import { processReceipts, requeueReceipt } from "../notifications/receipts";
+import { ownerAlertEmail, processOwnerAlerts } from "../notifications/owner-alerts";
+import { reconcileOrder } from "../orders/order-service";
+import { paymentDeps, runPaymentRecovery } from "../payments/runtime";
+import { siteUrl } from "@/env";
 
 // Every export here is a server action reachable by POST from any client, so
 // each one starts with requireAdmin() and validates all input with Zod.
@@ -28,7 +35,7 @@ function failure(e: unknown): ActionState {
   if (e instanceof service.DomainError) {
     return { ok: false, message: e.message, errors: e.field ? { [e.field]: [e.message] } : undefined };
   }
-  console.error("[admin action]", e);
+  console.error(JSON.stringify({ level: "error", event: "admin_action_failed", ...safeErrorFields(e) }));
   return { ok: false, message: "Something went wrong. Please try again." };
 }
 
@@ -267,4 +274,64 @@ export async function deleteCategoryAction(_prev: ActionState, form: FormData): 
     return failure(e);
   }
   return done(moved ? `Category deleted. ${moved} product${moved === 1 ? "" : "s"} moved.` : "Category deleted.");
+}
+
+// --- Orders ----------------------------------------------------------------------
+
+export async function recheckPaymentAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  if (!id.success) return { ok: false, message: "Invalid order." };
+  const deps = await paymentDeps();
+  if (!deps) return { ok: false, message: "Online payments are disabled, so Paystack can't be checked." };
+  try {
+    // Includes abandoned or failed attempts that reached Paystack: a late payment is found even if its webhook was lost.
+    const res = await reconcileOrder(deps, id.data, { scope: "recoverable" });
+    if (res.stockChanged) updateTag(CATALOGUE_TAG);
+    if (res.receiptQueued) await processReceipts(db, configuredMailer(), { siteUrl: siteUrl(), orderId: id.data, limit: 1 });
+    await processOwnerAlerts(db, configuredMailer(), { siteUrl: siteUrl(), ownerEmail: ownerAlertEmail(), limit: 5 });
+    refresh();
+    if (res.unverified > 0) return { ok: false, message: "Paystack couldn't be reached. Try again shortly." };
+    return { ok: true, message: res.paid ? "Payment confirmed by Paystack." : "Checked with Paystack: not paid." };
+  } catch (e) {
+    return failure(e);
+  }
+}
+
+export async function retryReceiptAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = idSchema.safeParse(form.get("id"));
+  if (!id.success) return { ok: false, message: "Invalid order." };
+  const requeued = await requeueReceipt(db, id.data);
+  if (requeued.count === 0) return { ok: false, message: "There is no unsent receipt for a paid order here." };
+  const mailer = configuredMailer();
+  if (!mailer) {
+    refresh();
+    return { ok: false, message: "Receipt queued, but no email provider is configured (EMAIL_PROVIDER)." };
+  }
+  const res = await processReceipts(db, mailer, { siteUrl: siteUrl(), orderId: id.data, limit: 1 });
+  refresh();
+  return res.sent ? { ok: true, message: "Receipt sent." } : { ok: false, message: "Sending failed; it will be retried automatically." };
+}
+
+/** Runs payment recovery now (the daily cron does the same): re-checks recent unpaid attempts with Paystack. */
+export async function recoverPaymentsAction(): Promise<ActionState> {
+  await requireAdmin();
+  try {
+    const res = await runPaymentRecovery({ limit: 10 });
+    if ("disabled" in res) return { ok: false, message: "Online payments are disabled, so Paystack can't be checked." };
+    if (res.stockChanged) updateTag(CATALOGUE_TAG);
+    const mailer = configuredMailer();
+    if (res.receiptQueued) await processReceipts(db, mailer, { siteUrl: siteUrl(), limit: 10 });
+    await processOwnerAlerts(db, mailer, { siteUrl: siteUrl(), ownerEmail: ownerAlertEmail(), limit: 10 });
+    refresh();
+    const found = res.outcomes.paid ?? 0;
+    const parts = [`Checked ${res.checked} payment attempt${res.checked === 1 ? "" : "s"} with Paystack`];
+    if (found) parts.push(`${found} newly confirmed as paid`);
+    if (res.unverified) parts.push(`${res.unverified} couldn't be checked (Paystack unreachable); they will be retried`);
+    if (res.checked === 0 && !res.unverified) parts.push("nothing is due (each attempt is re-checked at most every 6 hours)");
+    return { ok: res.unverified === 0, message: `${parts.join("; ")}.` };
+  } catch (e) {
+    return failure(e);
+  }
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-export function MobileNav({ links }: { links: { href: string; label: string }[] }) {
+/** `bagLink` is server-rendered (it reads the bag cookie) and passed in as-is. */
+export function MobileNav({ links, bagLink }: { links: { href: string; label: string }[]; bagLink?: ReactNode }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -34,6 +35,10 @@ export function MobileNav({ links }: { links: { href: string; label: string }[] 
                 </Link>
               </li>
             ))}
+            {bagLink && (
+              // The link is server-rendered, so it can't take an onClick; its click bubbles here to close the menu.
+              <li onClick={() => setOpen(false)}>{bagLink}</li>
+            )}
           </ul>
         </nav>
       )}

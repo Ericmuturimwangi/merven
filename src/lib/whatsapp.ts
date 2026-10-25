@@ -52,6 +52,68 @@ export function buildWhatsAppUrl(phone: string, enquiry: WhatsAppEnquiry): strin
   return `https://wa.me/${number}?text=${encodeURIComponent(buildEnquiryMessage(enquiry))}`;
 }
 
+/** One bag line as the customer sees it. Prices come from the server, never from the browser. */
+export type CartEnquiryLine = {
+  /** Null when the piece can't be described (e.g. it is no longer listed): such lines are left out. */
+  productName: string | null;
+  colour: string | null;
+  size: string | null;
+  quantity: number;
+  /** Current unit price, or null when the piece can't be bought. */
+  unitPriceMinor: number | null;
+  status: "available" | "insufficient_stock" | "sold_out" | "unavailable" | "not_found";
+  /** How many can be bought now (for "only N available"). */
+  maxQuantity: number;
+};
+
+const LINE_NOTE: Partial<Record<CartEnquiryLine["status"], string>> = {
+  sold_out: "Sold out on the website. Could you tell me if it will be restocked?",
+  unavailable: "No longer available on the website.",
+};
+
+/**
+ * Prefilled enquiry for a whole bag. It lists each piece with the price shown
+ * on the website, marks anything that can't be bought as it is, and says
+ * plainly that delivery isn't included and that this is not an order.
+ * Returns null when no line can be described.
+ */
+export function buildCartEnquiryMessage(lines: CartEnquiryLine[], subtotalMinor: number): string | null {
+  const described = lines.filter((l): l is CartEnquiryLine & { productName: string } => !!l.productName?.trim());
+  if (described.length === 0) return null;
+
+  const items = described.map((l, i) => {
+    const options = [l.colour?.trim(), l.size?.trim() ? `size ${l.size.trim()}` : null].filter(Boolean).join(", ");
+    const out = [`${i + 1}. ${l.productName.trim()}${options ? ` — ${options}` : ""}`, `   Quantity: ${l.quantity}`];
+    if (l.status === "available" && l.unitPriceMinor != null) {
+      out.push(`   Unit price: ${formatKES(l.unitPriceMinor)}`, `   Line total: ${formatKES(l.unitPriceMinor * l.quantity)}`);
+    } else if (l.status === "insufficient_stock" && l.unitPriceMinor != null) {
+      out.push(`   Unit price: ${formatKES(l.unitPriceMinor)}`, `   Only ${l.maxQuantity} available on the website.`);
+    } else {
+      out.push(`   ${LINE_NOTE[l.status] ?? "No longer available on the website."}`);
+    }
+    return out.join("\n");
+  });
+
+  const partial = described.some((l) => l.status !== "available");
+  return [
+    "Hello Merven Fashions, I'd like to enquire about the items in my bag.",
+    "",
+    items.join("\n\n"),
+    "",
+    `${partial ? "Subtotal (items available as listed)" : "Subtotal"}: ${formatKES(subtotalMinor)}`,
+    "Delivery: Not included; to be confirmed.",
+    "",
+    "Please confirm item availability, delivery charges and payment options.",
+    "This is an enquiry, not a confirmed order.",
+  ].join("\n");
+}
+
+/** Click-to-chat link for a whole bag, or null when there is nothing to enquire about. */
+export function buildCartWhatsAppUrl(phone: string, lines: CartEnquiryLine[], subtotalMinor: number): string | null {
+  const message = buildCartEnquiryMessage(lines, subtotalMinor);
+  return message ? `https://wa.me/${normaliseWhatsAppNumber(phone)}?text=${encodeURIComponent(message)}` : null;
+}
+
 /** "254720630112" -> "+254 720 630 112" for display; other countries get "+" and digits. */
 export function formatWhatsAppNumber(phone: string): string {
   const n = normaliseWhatsAppNumber(phone);

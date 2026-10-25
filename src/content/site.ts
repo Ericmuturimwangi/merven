@@ -26,6 +26,8 @@ export const delivery = {
     "Delivery fees and timing depend on where you are. We confirm both with you on WhatsApp before you pay.",
     "We don't currently deliver outside Kenya.",
   ],
+  /** Shown with the bag subtotal: no fee is ever added to it. */
+  bagNote: "Delivery is not included. We'll confirm delivery arrangements and charges with you after your enquiry.",
 };
 
 export const ordering = {

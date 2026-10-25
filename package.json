@@ -28,6 +28,7 @@
     "@supabase/supabase-js": "2.118.0",
     "better-auth": "1.7.10",
     "next": "16.4.2",
+    "nodemailer": "10.0.16",
     "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",

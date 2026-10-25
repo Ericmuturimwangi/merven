@@ -7,6 +7,7 @@ import { VariantPicker } from "@/components/catalogue/variant-picker";
 import { delivery, site } from "@/content/site";
 import { serverEnv, siteUrl } from "@/env";
 import { productJsonLd, serializeJsonLd } from "@/lib/structured-data";
+import { paymentAvailability } from "@/server/payments/runtime";
 import { getProduct, getPublishedSlugs } from "@/server/catalogue/queries";
 import type { PublicProduct } from "@/server/catalogue/repository";
 
@@ -50,6 +51,7 @@ async function ProductContent({ params }: { params: PageProps<"/products/[slug]"
   const product = await getProduct(slug);
   if (!product) notFound();
 
+  const payments = await paymentAvailability();
   const description = (
     <div className="space-y-3 text-[0.95rem] leading-relaxed text-ink">
       {product.description.split(/\n{2,}/).map((p, i) => (
@@ -80,6 +82,7 @@ async function ProductContent({ params }: { params: PageProps<"/products/[slug]"
               priceToMinor={product.priceToMinor}
               variants={product.variants}
               whatsappNumber={serverEnv().WHATSAPP_NUMBER}
+              onlinePayment={payments.available ? { testMode: payments.testMode } : null}
             >
               {description}
             </VariantPicker>

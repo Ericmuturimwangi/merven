@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
+import { AddToBag } from "@/components/cart/add-to-bag";
 import { formatKES } from "@/lib/money";
 import { compareSizes } from "@/lib/sizes";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
@@ -15,9 +16,11 @@ type Props = {
   whatsappNumber: string;
   /** Rendered between the price and the options (the short description). */
   children?: ReactNode;
+  /** Set only when online payment is available (server-side config). */
+  onlinePayment?: { testMode: boolean } | null;
 };
 
-export function VariantPicker({ productName, productUrl, priceFromMinor, priceToMinor, variants, whatsappNumber, children }: Props) {
+export function VariantPicker({ productName, productUrl, priceFromMinor, priceToMinor, variants, whatsappNumber, children, onlinePayment }: Props) {
   const colours = useMemo(() => {
     const seen = new Map<string, string | null>();
     for (const v of variants) if (!seen.has(v.colour)) seen.set(v.colour, v.colourHex);
@@ -30,6 +33,7 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
   const [size, setSize] = useState<string | null>(sizes.length === 1 ? sizes[0] : null);
 
   const selected = variants.find((v) => v.colour === colour && v.size === size) ?? null;
+  const statusId = useId();
   const colourAvailable = (c: string) => variants.some((v) => v.colour === c && v.available);
   const sizeState = (s: string): "available" | "sold-out" | "unavailable" => {
     const matches = variants.filter((v) => v.size === s && (colour === null || v.colour === colour));
@@ -113,20 +117,30 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
         </div>
       </fieldset>
 
-      <p className="text-sm text-ink" aria-live="polite">
+      <p id={statusId} className="text-sm text-ink" aria-live="polite">
         {status}
       </p>
 
-      {/* On phones the enquiry button stays reachable while scrolling the options. */}
+      {/* On phones the bag and enquiry buttons stay reachable while scrolling the options. */}
       <div className="sticky bottom-0 z-10 -mx-4 border-t border-line bg-ivory/95 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+        {/* The server re-checks availability; this only avoids offering a sold-out choice. */}
+        <AddToBag variantId={selected?.available ? selected.id : null} describedBy={statusId} />
         <a
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex min-h-12 w-full items-center justify-center bg-forest px-6 text-sm tracking-wide text-white transition-colors hover:bg-forest-deep"
+          className="mt-2 flex min-h-12 w-full items-center justify-center border border-charcoal px-6 text-sm tracking-wide transition-colors hover:bg-white"
         >
           {selected && !selected.available ? "Ask about a restock on WhatsApp" : "Enquire on WhatsApp"}
         </a>
+        {onlinePayment && selected?.available && (
+          <a
+            href={`/checkout?items=${selected.id}:1`}
+            className="mt-2 flex min-h-12 w-full items-center justify-center border border-charcoal px-6 text-sm tracking-wide transition-colors hover:bg-white"
+          >
+            Buy now and pay online{onlinePayment.testMode ? " (test mode)" : ""}
+          </a>
+        )}
       </div>
       <p className="text-xs leading-relaxed text-stone">
         Opens WhatsApp with this piece, your size and colour already written in. Nothing is sent until you press send. An

@@ -7,8 +7,9 @@
 // - Non-negative checks (stock, prices) are enforced by CHECK constraints in the migrations.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"] // Order.checkoutKey is unique only among unpaid orders
 }
 
 datasource db {
@@ -73,6 +74,8 @@ model ProductVariant {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  orderItems OrderItem[]
+
   @@unique([productId, size, colour])
   @@map("product_variant")
 }
@@ -99,14 +102,14 @@ model ProductImage {
 // ---------------------------------------------------------------------------
 
 model AdminUser {
-  id            String              @id
+  id            String         @id
   name          String
-  email         String              @unique
-  emailVerified Boolean             @default(false)
+  email         String         @unique
+  emailVerified Boolean        @default(false)
   image         String?
-  isActive      Boolean             @default(true) // deactivated admins fail requireAdmin()
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  isActive      Boolean        @default(true) // deactivated admins fail requireAdmin()
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   sessions      AdminSession[]
   accounts      AdminAccount[]
 
@@ -168,4 +171,154 @@ model RateLimit {
   lastRequest BigInt
 
   @@map("rate_limit")
+}
+
+// ---------------------------------------------------------------------------
+// Online orders and payments (Paystack). Money is integer minor units (cents).
+// Order, payment attempt and notification state are kept separate: a failed
+// email never changes payment state, and a retry never overwrites an earlier
+// attempt. Card data and raw provider payloads are never stored.
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+}
+
+enum StockStatus {
+  NOT_APPLIED // order not paid yet
+  DEDUCTED // stock decremented when payment was confirmed
+  SHORTFALL // paid, but stock was insufficient for at least one line: needs owner action
+}
+
+enum PaymentStatus {
+  INITIALIZING // row saved, provider not yet called (or call outcome unknown)
+  PENDING // provider transaction exists; awaiting customer / confirmation
+  SUCCESS
+  FAILED
+  ABANDONED
+  REVERSED
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED // gave up after the maximum attempts; visible in admin, can be retried
+}
+
+model Order {
+  id             String              @id @default(cuid())
+  reference      String              @unique // public, random, e.g. MRV-7K3Q9X2M4T (TEST-MRV-… in test mode)
+  testMode       Boolean
+  status         OrderStatus         @default(PENDING_PAYMENT)
+  stockStatus    StockStatus         @default(NOT_APPLIED)
+  customerName   String
+  customerEmail  String
+  customerPhone  String // E.164, e.g. +254712345678
+  currency       String              @default("KES") @db.Char(3)
+  subtotalMinor  Int
+  totalMinor     Int // equals subtotal: delivery is not charged online yet
+  needsAttention String? // e.g. duplicate payment or stock shortfall; for the owner
+  // Bag checkouts only: HMAC of the browser's bag session and its basket. Two
+  // submissions of the same bag converge on one unpaid order; once an order
+  // leaves PENDING_PAYMENT the same basket can be ordered again. Null for Buy now.
+  checkoutKey    String?
+  paidAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  items          OrderItem[]
+  payments       PaymentAttempt[]
+  notifications  EmailNotification[]
+
+  @@index([status, createdAt])
+  @@unique([checkoutKey], map: "order_pending_checkout_key", where: raw("\"status\" = 'PENDING_PAYMENT'"))
+  @@map("order")
+}
+
+model OrderItem {
+  id             String         @id @default(cuid())
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  // Snapshot at checkout time: later catalogue edits never change an order.
+  productId      String
+  productName    String
+  productSlug    String
+  sku            String
+  size           String
+  colour         String
+  unitPriceMinor Int
+  quantity       Int
+  lineTotalMinor Int
+
+  @@index([orderId])
+  @@index([variantId])
+  @@map("order_item")
+}
+
+model PaymentAttempt {
+  id                    String        @id @default(cuid())
+  orderId               String
+  order                 Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider              String        @default("paystack")
+  reference             String        @unique // our transaction reference sent to Paystack
+  testMode              Boolean
+  status                PaymentStatus @default(INITIALIZING)
+  amountMinor           Int
+  currency              String        @db.Char(3)
+  authorizationUrl      String?
+  providerTransactionId String?       @unique
+  channel               String? // e.g. card, mobile_money
+  paidAt                DateTime?
+  failureReason         String?
+  lastVerifiedAt        DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([orderId, createdAt])
+  @@map("payment_attempt")
+}
+
+model WebhookEvent {
+  id          String             @id @default(cuid())
+  provider    String             @default("paystack")
+  eventKey    String             @unique // provider + event + transaction id + status
+  event       String
+  reference   String?
+  status      WebhookEventStatus @default(RECEIVED)
+  error       String?
+  receivedAt  DateTime           @default(now())
+  processedAt DateTime?
+
+  @@map("webhook_event")
+}
+
+model EmailNotification {
+  id                String             @id @default(cuid())
+  orderId           String
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kind              String // "PAYMENT_RECEIPT"
+  status            NotificationStatus @default(PENDING)
+  attempts          Int                @default(0)
+  lastError         String?
+  nextAttemptAt     DateTime           @default(now())
+  lockedAt          DateTime?
+  sentAt            DateTime?
+  providerMessageId String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([orderId, kind]) // one receipt per order, however many webhooks arrive
+  @@index([status, nextAttemptAt])
+  @@map("email_notification")
 }

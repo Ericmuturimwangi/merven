@@ -59,3 +59,38 @@ export async function getAdminStats() {
   const count = (s: ProductStatus) => byStatus.find((r) => r.status === s)?._count._all ?? 0;
   return { published: count("PUBLISHED"), draft: count("DRAFT"), archived: count("ARCHIVED"), outOfStock };
 }
+
+export async function listAdminOrders(opts: { status?: "PENDING_PAYMENT" | "PAID" | "CANCELLED"; attention?: boolean }) {
+  await requireAdmin();
+  return db.order.findMany({
+    where: { ...(opts.status ? { status: opts.status } : {}), ...(opts.attention ? { needsAttention: { not: null } } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      reference: true,
+      testMode: true,
+      status: true,
+      stockStatus: true,
+      customerName: true,
+      totalMinor: true,
+      createdAt: true,
+      paidAt: true,
+      needsAttention: true,
+      notifications: { select: { status: true } },
+      _count: { select: { items: true, payments: true } },
+    },
+  });
+}
+
+export async function getAdminOrder(id: string) {
+  await requireAdmin();
+  return db.order.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      payments: { orderBy: { createdAt: "asc" } },
+      notifications: true,
+    },
+  });
+}

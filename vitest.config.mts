@@ -13,6 +13,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     globalSetup: ["tests/support/global-setup.ts"],
+    setupFiles: ["tests/support/worker-env.ts"],
     fileParallelism: false, // integration tests share one database
     testTimeout: 20_000,
     hookTimeout: 60_000,

@@ -2,6 +2,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import type { PoolConfig } from "pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { SUPABASE_ROOT_CA_2021 } from "./certs/supabase-root-ca";
+import { sanitizePrismaError } from "./db-errors";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1", ""]);
 const SSL_PARAMS = ["sslmode", "sslcert", "sslkey", "sslrootcert", "sslaccept", "uselibpqcompat"];
@@ -40,8 +41,21 @@ export function pgConfig(connectionString: string): PoolConfig {
 }
 
 // Kept free of `server-only` so CLI scripts and tests can construct a client.
+// Every operation (models, raw queries, inside transactions too) has its
+// errors made safe to log before they leave the client: see ./db-errors.ts.
 export function createPrismaClient(connectionString: string): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg(pgConfig(connectionString)) });
+  const client = new PrismaClient({ adapter: new PrismaPg(pgConfig(connectionString)) });
+  return client.$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        try {
+          return await query(args);
+        } catch (e) {
+          throw sanitizePrismaError(e);
+        }
+      },
+    },
+  }) as unknown as PrismaClient; // the extension changes behaviour only, not the client's shape
 }
 
 export type { PrismaClient };

@@ -151,6 +151,8 @@ describe("admin read queries", () => {
     ["getAdminProduct", () => adminQueries.getAdminProduct("abc123")],
     ["listAdminCategories", () => adminQueries.listAdminCategories()],
     ["getAdminStats", () => adminQueries.getAdminStats()],
+    ["listAdminOrders", () => adminQueries.listAdminOrders({})],
+    ["getAdminOrder", () => adminQueries.getAdminOrder("abc123")],
   ];
 
   it("covers every exported admin query", () => {

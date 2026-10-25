@@ -16,6 +16,7 @@ async function AdminGate({ children }: { children: React.ReactNode }) {
             <Link href="/admin" className="hover:underline">Products</Link>
             <Link href="/admin/products/new" className="hover:underline">New product</Link>
             <Link href="/admin/categories" className="hover:underline">Categories</Link>
+            <Link href="/admin/orders" className="hover:underline">Orders</Link>
             <Link href="/" className="hover:underline" target="_blank">View site</Link>
           </nav>
           <div className="ml-auto flex items-center gap-4">

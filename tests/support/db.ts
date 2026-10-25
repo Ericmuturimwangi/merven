@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createPrismaClient, type PrismaClient } from "@/server/prisma-client";
+import { assertSafe, SERVER_FACTS_SQL, type ServerFacts } from "./test-db-guard";
 
 export const hasTestDb = Boolean(process.env.TEST_DATABASE_URL);
 
@@ -7,10 +8,16 @@ export function testPrisma(): PrismaClient {
   return createPrismaClient(process.env.TEST_DATABASE_URL!);
 }
 
-export async function resetDb(prisma: PrismaClient) {
-  await prisma.$executeRawUnsafe(
-    'TRUNCATE "product_image", "product_variant", "product", "category", "admin_session", "admin_account", "admin_user", "rate_limit" RESTART IDENTITY CASCADE',
-  );
+type TruncateClient = Pick<PrismaClient, "$transaction">;
+
+/** Empties every table, but only after the server confirms (in the same transaction) this is the local merven_test database. */
+export async function resetDb(prisma: TruncateClient) {
+  await prisma.$transaction(async (tx) => {
+    assertSafe((await tx.$queryRawUnsafe<ServerFacts[]>(SERVER_FACTS_SQL))[0]);
+    await tx.$executeRawUnsafe(
+      'TRUNCATE "email_notification", "webhook_event", "payment_attempt", "order_item", "order", "product_image", "product_variant", "product", "category", "admin_session", "admin_account", "admin_user", "rate_limit" RESTART IDENTITY CASCADE',
+    );
+  });
 }
 
 let n = 0;

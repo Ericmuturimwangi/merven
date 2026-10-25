@@ -1,6 +1,19 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { BagCount } from "@/components/cart/bag-count";
+import { BagLink } from "@/components/cart/bag-link";
 import { getCategories } from "@/server/catalogue/queries";
 import { MobileNav } from "./mobile-nav";
+
+// Only the bag count depends on the visitor; it renders in its own Suspense
+// boundaries so the rest of the header stays in the static, cached shell.
+function HeaderBag({ className }: { className: string }) {
+  return (
+    <Suspense fallback={<BagLink count={null} className={className} />}>
+      <BagCount className={className} />
+    </Suspense>
+  );
+}
 
 export async function SiteHeader() {
   const categories = await getCategories();
@@ -13,6 +26,7 @@ export async function SiteHeader() {
       <div className="mx-auto grid h-16 max-w-7xl grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6 lg:flex lg:h-20 lg:justify-between lg:gap-8 lg:px-10">
         <MobileNav
           links={[...links, { href: "/search", label: "Search" }, { href: "/delivery", label: "Delivery & ordering" }]}
+          bagLink={<HeaderBag className="block py-3 font-display text-2xl" />}
         />
         <Link href="/" className="justify-self-center text-center leading-none" aria-label="Merven Fashions home">
           <span className="block font-display text-[1.7rem] font-medium tracking-[0.2em] lg:text-[2rem]">MERVEN</span>
@@ -25,13 +39,14 @@ export async function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <div className="flex items-center justify-self-end gap-5 text-sm">
+        <div className="flex items-center justify-self-end gap-4 text-sm sm:gap-5">
           <Link href="/delivery" className="hidden py-2 text-ink hover:text-forest xl:inline">
             Delivery
           </Link>
           <Link href="/search" className="py-2 text-ink hover:text-forest" aria-label="Search the catalogue">
             Search
           </Link>
+          <HeaderBag className="inline-flex min-h-11 items-center text-ink hover:text-forest" />
         </div>
       </div>
     </header>
