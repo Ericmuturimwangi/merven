@@ -46,7 +46,7 @@ export const auth = betterAuth({
     window: 60,
     max: 60,
     customRules: {
-      "/sign-in/email": { window: 3 * 60, max: 5 },
+      "/sign-in/email": { window: 15* 60, max: 5 },
     },
   },
   databaseHooks: {
