@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { PrismaClient } from "@/generated/prisma/client";
 
 // Fixed-window rate limit stored in Postgres (the `rate_limit` table that
@@ -18,7 +19,28 @@ export async function rateLimit(prisma: PrismaClient, key: string, opts: { max: 
   return { allowed: Number(rows[0]?.count ?? 0) <= opts.max };
 }
 
-/** Client IP as set by the platform (Vercel overwrites x-forwarded-for). */
-export function clientIp(headers: Headers): string {
-  return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip") || "unknown";
+/** Rate-limit subject when no platform-verified client IP is available (one shared bucket). */
+export const UNTRUSTED_CLIENT = "untrusted";
+
+/**
+ * The client IP to rate-limit on, taken only from headers the platform sets.
+ *
+ * Trust model (Vercel request-headers docs): on Vercel, `x-vercel-forwarded-for`
+ * and `x-real-ip` carry the client's public IP as Vercel saw it, and Vercel
+ * overwrites any client-supplied `X-Forwarded-For` ("do not forward external
+ * IPs ... to prevent IP spoofing"); `x-vercel-forwarded-for` also survives a
+ * proxy placed in front of Vercel. So they are read only when the code runs on
+ * Vercel (VERCEL=1), and only if the value is a single valid IP address.
+ *
+ * Anywhere else (local dev, another host or proxy) no forwarded header is
+ * trusted: every request shares one bucket, which is stricter, never looser,
+ * than per-IP limits. Running behind another proxy needs its own trusted header.
+ */
+export function clientIp(headers: Headers, env: Record<string, string | undefined> = process.env): string {
+  if (env.VERCEL !== "1") return UNTRUSTED_CLIENT;
+  for (const name of ["x-vercel-forwarded-for", "x-real-ip"]) {
+    const value = headers.get(name)?.trim();
+    if (value && isIP(value)) return value;
+  }
+  return UNTRUSTED_CLIENT;
 }

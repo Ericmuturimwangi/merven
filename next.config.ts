@@ -1,18 +1,8 @@
 import type { NextConfig } from "next";
 import { catalogueRedirects, toNextRedirects } from "./src/content/redirects";
+import { securityHeaders as securityHeadersFor } from "./src/lib/security-headers";
 
-const securityHeaders = [
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-  // Nonce-free CSP subset: blocks framing, plugin content and form posts to other origins.
-  {
-    key: "Content-Security-Policy",
-    value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
-  },
-];
+const securityHeaders = securityHeadersFor({ isDev: process.env.NODE_ENV === "development" });
 
 // Only public objects in this project's product-images bucket may pass through the optimiser.
 function supabaseImagePattern() {

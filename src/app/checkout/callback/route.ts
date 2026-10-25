@@ -4,6 +4,7 @@ import { siteUrl } from "@/env";
 import { settlePaidBag } from "@/server/cart/checkout-link-store";
 import { handlePaystackCallback } from "@/server/payments/callback";
 import { afterPaymentChange, paymentDeps } from "@/server/payments/runtime";
+import { clientIp } from "@/server/rate-limit";
 
 export async function GET(request: Request) {
   // Always per request: never prerender this handler (payment config is read at runtime).
@@ -11,7 +12,8 @@ export async function GET(request: Request) {
   const deps = await paymentDeps();
   if (!deps) return Response.redirect(`${siteUrl()}/checkout/unknown`, 303);
   const url = new URL(request.url);
-  const { location, result } = await handlePaystackCallback(deps, url.searchParams.get("reference") ?? url.searchParams.get("trxref"));
+  const reference = url.searchParams.get("reference") ?? url.searchParams.get("trxref");
+  const { location, result } = await handlePaystackCallback(deps, reference, { client: clientIp(request.headers) });
   if (result && result.outcome !== "unverified") after(() => afterPaymentChange(result, { revalidate: true }));
   // After verification: if the order linked to this visitor's bag is now PAID in
   // the database, remove the paid lines. The redirect itself proves nothing.

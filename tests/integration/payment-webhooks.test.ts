@@ -1,8 +1,8 @@
 import { createHmac } from "node:crypto";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkoutInputSchema } from "@/server/orders/checkout-input";
 import * as svc from "@/server/orders/order-service";
-import { handlePaystackCallback } from "@/server/payments/callback";
+import { CALLBACK_VERIFY_LIMITS, handlePaystackCallback } from "@/server/payments/callback";
 import { PaystackError } from "@/server/payments/paystack";
 import { handlePaystackWebhook } from "@/server/payments/webhook";
 import { fakePaystack, testOrderOpts, testPaymentConfig } from "../support/fake-paystack";
@@ -148,5 +148,60 @@ describe.skipIf(!hasTestDb)("Paystack webhook and callback", () => {
     const body = event(attemptRef);
     await handlePaystackWebhook(deps, body, sign(body));
     expect((await svc.getCustomerOrder(prisma, order.reference))?.state).toBe("paid");
+  });
+
+  describe("callback verify rate limits", () => {
+    const quiet = () => vi.spyOn(console, "warn").mockImplementation(() => {});
+    const orderPage = () => new RegExp(`^/checkout/order/${order.reference}\\?token=`);
+
+    it("lets legitimate returns and retries verify, applying the payment once", async () => {
+      ps.settle(attemptRef, { status: "success" });
+      const first = await handlePaystackCallback(deps, attemptRef, { client: "203.0.113.7" });
+      const retry = await handlePaystackCallback(deps, attemptRef, { client: "203.0.113.7" });
+      expect(first).toMatchObject({ result: { outcome: "paid" } });
+      expect(retry).toMatchObject({ result: { outcome: "already_paid" } });
+      expect(retry.location).toMatch(orderPage());
+      expect(await prisma.productVariant.findFirstOrThrow()).toMatchObject({ stock: 2 });
+      expect(await prisma.emailNotification.count()).toBe(1);
+    });
+
+    it("stops verifying a reference hammered beyond its limit, but still shows the order page", async () => {
+      const warn = quiet();
+      ps.settle(attemptRef, { status: "ongoing" });
+      for (let i = 0; i < CALLBACK_VERIFY_LIMITS.perReference; i++) {
+        expect((await handlePaystackCallback(deps, attemptRef, { client: `203.0.113.${i + 1}` })).result).toMatchObject({ outcome: "pending" });
+      }
+      // From another client too: the reference limit isn't per client.
+      const limited = await handlePaystackCallback(deps, attemptRef, { client: "198.51.100.99" });
+      expect(limited).toEqual({ location: expect.stringMatching(orderPage()), limited: true });
+      expect(ps.verified).toHaveLength(CALLBACK_VERIFY_LIMITS.perReference);
+      expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([JSON.stringify({ level: "warn", event: "callback_verify_rate_limited", attempt: attemptRef, by: "reference" })]);
+      warn.mockRestore();
+      // Nothing was changed by the limited request; the webhook still confirms the payment.
+      ps.settle(attemptRef, { status: "success" });
+      const body = event(attemptRef);
+      expect(await handlePaystackWebhook(deps, body, sign(body))).toMatchObject({ result: { outcome: "paid" } });
+    });
+
+    it("limits a client probing many references, without affecting other clients", async () => {
+      const warn = quiet();
+      for (let i = 0; i < CALLBACK_VERIFY_LIMITS.perClient; i++) {
+        expect(await handlePaystackCallback(deps, `TEST-MRV-PROBE${i}`, { client: "203.0.113.66" })).toEqual({ location: "/checkout/unknown" });
+      }
+      expect(await handlePaystackCallback(deps, attemptRef, { client: "203.0.113.66" })).toMatchObject({ limited: true });
+      expect(ps.verified).toHaveLength(0);
+      expect(await handlePaystackCallback(deps, attemptRef, { client: "203.0.113.67" })).toMatchObject({ result: { outcome: "pending" } });
+      // Unknown references create no per-reference rows.
+      expect(await prisma.rateLimit.count({ where: { key: { startsWith: "callback:ref:TEST-MRV-PROBE" } } })).toBe(0);
+      warn.mockRestore();
+    });
+
+    it("still redirects to the order page when Paystack can't be reached", async () => {
+      ps.failVerify(new PaystackError("http", "Paystack responded with HTTP 503", 503));
+      const res = await handlePaystackCallback(deps, attemptRef, { client: "203.0.113.8" });
+      expect(res).toMatchObject({ result: { outcome: "unverified" } });
+      expect(res.location).toMatch(orderPage());
+      expect(await status()).toBe("PENDING_PAYMENT");
+    });
   });
 });

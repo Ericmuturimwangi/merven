@@ -195,9 +195,11 @@ export async function createOrder(
   input: CheckoutInput,
   opts: { testMode: boolean; testDatabaseToken?: string | null; checkoutKey?: string | null },
 ): Promise<CreateOrderResult> {
-  // Only test mode exists in this release; a test order needs an approved database.
-  // The database must suit the mode: a test order needs the test-marked database,
-  // a live order a database without that marker (databaseApprovedFor).
+  // Test and live modes are both implemented; which one applies comes from the
+  // payment configuration (see ../payments/config.ts: live only on the Vercel
+  // production deployment). The database must suit the mode: a test order needs
+  // the test-marked database, a live order a database without that marker
+  // (databaseApprovedFor).
   if (!(await databaseApprovedFor(prisma, opts.testMode ? "test" : "live", opts.testDatabaseToken))) {
     return { ok: false, reason: "test_database_not_approved" };
   }
