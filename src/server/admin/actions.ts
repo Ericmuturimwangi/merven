@@ -10,6 +10,7 @@ import {
   formDataToObject,
   idSchema,
   imageAltSchema,
+  imageColourSchema,
   productInputSchema,
   stockUpdateSchema,
   variantInputSchema,
@@ -156,9 +157,11 @@ export async function uploadImageAction(_prev: ActionState, form: FormData): Pro
   await requireAdmin();
   const productId = idSchema.safeParse(form.get("productId"));
   const alt = imageAltSchema.safeParse({ alt: form.get("alt") });
+  const colour = imageColourSchema.safeParse({ colour: form.get("colour") ?? "" });
   const file = form.get("file");
   if (!productId.success) return { ok: false, message: "Invalid product." };
   if (!alt.success) return invalid(alt.error);
+  if (!colour.success) return invalid(colour.error);
   if (!(file instanceof Blob)) return { ok: false, message: "Choose an image to upload.", errors: { file: ["Choose an image"] } };
 
   try {
@@ -182,6 +185,7 @@ export async function uploadImageAction(_prev: ActionState, form: FormData): Pro
       width: processed.image.width,
       height: processed.image.height,
       alt: alt.data.alt,
+      colour: colour.data.colour,
     });
   } catch (e) {
     await storage.remove(stored.key).catch(() => undefined);
@@ -190,18 +194,22 @@ export async function uploadImageAction(_prev: ActionState, form: FormData): Pro
   return done("Image uploaded.");
 }
 
-export async function updateImageAltAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+/** Saves a photo's description and the colour it shows. */
+export async function updateImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();
   const imageId = idSchema.safeParse(form.get("imageId"));
   const alt = imageAltSchema.safeParse({ alt: form.get("alt") });
+  const colour = imageColourSchema.safeParse({ colour: form.get("colour") ?? "" });
   if (!imageId.success) return { ok: false, message: "Invalid image." };
   if (!alt.success) return invalid(alt.error);
+  if (!colour.success) return invalid(colour.error);
   try {
+    await service.updateImageColour(db, imageId.data, colour.data.colour);
     await service.updateImageAlt(db, imageId.data, alt.data.alt);
   } catch (e) {
     return failure(e);
   }
-  return done("Image description saved.");
+  return done("Image saved.");
 }
 
 export async function moveImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {

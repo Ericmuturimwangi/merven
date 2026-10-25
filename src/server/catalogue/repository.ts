@@ -18,6 +18,8 @@ export type ProductSort = "newest" | "price-asc" | "price-desc";
 export const PRODUCT_SORTS: readonly ProductSort[] = ["newest", "price-asc", "price-desc"];
 
 export type PublicImage = { url: string; alt: string; width: number; height: number };
+/** A product-page photo: may name the variant colour it shows (null: any colour). */
+export type PublicProductImage = PublicImage & { colour: string | null };
 
 export type PublicProductCard = {
   id: string;
@@ -45,7 +47,7 @@ export type PublicVariant = {
 export type PublicProduct = Omit<PublicProductCard, "image" | "hoverImage"> & {
   description: string;
   details: string | null;
-  images: PublicImage[];
+  images: PublicProductImage[];
   variants: PublicVariant[];
   updatedAt: Date;
 };
@@ -196,7 +198,7 @@ export async function getProductBySlug(prisma: PrismaClient, slug: string): Prom
       priceMinor: true,
       updatedAt: true,
       category: { select: { name: true, slug: true } },
-      images: { orderBy: IMAGE_ORDER, select: { url: true, alt: true, width: true, height: true } },
+      images: { orderBy: IMAGE_ORDER, select: { url: true, alt: true, width: true, height: true, colour: true } },
       variants: {
         where: { active: true },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],

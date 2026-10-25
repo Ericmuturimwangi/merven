@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ProductGallery } from "@/components/catalogue/product-gallery";
+import { ProductColourProvider } from "@/components/catalogue/product-colour";
 import { VariantPicker } from "@/components/catalogue/variant-picker";
 import { delivery, site } from "@/content/site";
 import { serverEnv, siteUrl } from "@/env";
@@ -60,59 +61,64 @@ async function ProductContent({ params }: { params: PageProps<"/products/[slug]"
     </div>
   );
 
+  // A single colour is preselected (as the picker does); the gallery and picker share the choice.
+  const colours = [...new Set(product.variants.map((v) => v.colour))];
+
   return (
-    <article className="grid gap-8 lg:grid-cols-12 lg:gap-14">
-      <ProductJsonLd product={product} />
-      <div className="lg:col-span-7">
-        <ProductGallery images={product.images} name={product.name} />
-      </div>
-      <div className="lg:col-span-5 lg:pt-2">
-        <nav aria-label="Breadcrumb" className="text-xs text-stone">
-          <Link href="/shop" className="hover:text-charcoal">Shop</Link>
-          <span aria-hidden className="mx-1.5">/</span>
-          <Link href={`/shop/${product.category.slug}`} className="hover:text-charcoal">{product.category.name}</Link>
-        </nav>
-        <h1 className="mt-3 font-display text-4xl font-medium leading-[1.05] sm:text-5xl">{product.name}</h1>
-        <div className="mt-4">
-          {product.variants.length > 0 ? (
-            <VariantPicker
-              productName={product.name}
-              productUrl={absolute(`/products/${product.slug}`)}
-              priceFromMinor={product.priceFromMinor}
-              priceToMinor={product.priceToMinor}
-              variants={product.variants}
-              whatsappNumber={serverEnv().WHATSAPP_NUMBER}
-              onlinePayment={payments.available ? { testMode: payments.testMode } : null}
-            >
-              {description}
-            </VariantPicker>
-          ) : (
-            <div className="space-y-5">
-              {description}
-              <p className="text-stone">Currently unavailable.</p>
-            </div>
-          )}
+    <ProductColourProvider initial={colours.length === 1 ? colours[0] : null}>
+      <article className="grid gap-8 lg:grid-cols-12 lg:gap-14">
+        <ProductJsonLd product={product} />
+        <div className="lg:col-span-7">
+          <ProductGallery images={product.images} name={product.name} />
         </div>
-        <div className="mt-10 divide-y divide-line border-y border-line">
-          {product.details && (
+        <div className="lg:col-span-5 lg:pt-2">
+          <nav aria-label="Breadcrumb" className="text-xs text-stone">
+            <Link href="/shop" className="hover:text-charcoal">Shop</Link>
+            <span aria-hidden className="mx-1.5">/</span>
+            <Link href={`/shop/${product.category.slug}`} className="hover:text-charcoal">{product.category.name}</Link>
+          </nav>
+          <h1 className="mt-3 font-display text-4xl font-medium leading-[1.05] sm:text-5xl">{product.name}</h1>
+          <div className="mt-4">
+            {product.variants.length > 0 ? (
+              <VariantPicker
+                productName={product.name}
+                productUrl={absolute(`/products/${product.slug}`)}
+                priceFromMinor={product.priceFromMinor}
+                priceToMinor={product.priceToMinor}
+                variants={product.variants}
+                whatsappNumber={serverEnv().WHATSAPP_NUMBER}
+                onlinePayment={payments.available ? { testMode: payments.testMode } : null}
+              >
+                {description}
+              </VariantPicker>
+            ) : (
+              <div className="space-y-5">
+                {description}
+                <p className="text-stone">Currently unavailable.</p>
+              </div>
+            )}
+          </div>
+          <div className="mt-10 divide-y divide-line border-y border-line">
+            {product.details && (
+              <section className="py-5">
+                <h2 className="mb-2 text-sm font-medium">Details</h2>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-ink">{product.details}</p>
+              </section>
+            )}
             <section className="py-5">
-              <h2 className="mb-2 text-sm font-medium">Details</h2>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-ink">{product.details}</p>
+              <h2 className="mb-2 text-sm font-medium">Delivery &amp; ordering</h2>
+              <p className="text-sm leading-relaxed text-ink">
+                {delivery.summary} Send us an enquiry on WhatsApp and we&rsquo;ll confirm availability, delivery and payment
+                with you.{" "}
+                <Link href="/delivery" className="link-underline">
+                  How ordering works
+                </Link>
+              </p>
             </section>
-          )}
-          <section className="py-5">
-            <h2 className="mb-2 text-sm font-medium">Delivery &amp; ordering</h2>
-            <p className="text-sm leading-relaxed text-ink">
-              {delivery.summary} Send us an enquiry on WhatsApp and we&rsquo;ll confirm availability, delivery and payment
-              with you.{" "}
-              <Link href="/delivery" className="link-underline">
-                How ordering works
-              </Link>
-            </p>
-          </section>
+          </div>
         </div>
-      </div>
-    </article>
+      </article>
+    </ProductColourProvider>
   );
 }
 

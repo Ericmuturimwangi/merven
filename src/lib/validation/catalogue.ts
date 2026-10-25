@@ -113,6 +113,15 @@ export const imageAltSchema = z.object({
   alt: trimmed(3, 200, "Image description"),
 });
 
+/** The colour a photo shows: one of the product's variant colours, or empty for "any colour". */
+export const imageColourSchema = z.object({
+  colour: z
+    .string()
+    .trim()
+    .max(40, "Colour is too long")
+    .transform((v) => (v === "" ? null : v)),
+});
+
 export const idSchema = id;
 
 export const searchQuerySchema = z

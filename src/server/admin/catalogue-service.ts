@@ -222,12 +222,20 @@ export async function assertCanAddImage(prisma: PrismaClient, productId: string)
   return product._count.images;
 }
 
+/** A photo's colour must be one of the product's variant colours (any variant, active or not), or null. */
+async function assertImageColour(prisma: PrismaClient, productId: string, colour: string | null) {
+  if (colour === null) return;
+  const match = await prisma.productVariant.findFirst({ where: { productId, colour }, select: { id: true } });
+  if (!match) throw new DomainError("Choose one of this product's colours.", "colour");
+}
+
 export async function addProductImage(
   prisma: PrismaClient,
   productId: string,
-  image: { key: string; url: string; width: number; height: number; alt: string },
+  image: { key: string; url: string; width: number; height: number; alt: string; colour?: string | null },
 ) {
   const count = await assertCanAddImage(prisma, productId);
+  await assertImageColour(prisma, productId, image.colour ?? null);
   return prisma.productImage.create({
     data: {
       productId,
@@ -236,6 +244,7 @@ export async function addProductImage(
       width: image.width,
       height: image.height,
       alt: image.alt,
+      colour: image.colour ?? null,
       sortOrder: count,
     },
     select: { id: true, productId: true },
@@ -246,6 +255,14 @@ export async function updateImageAlt(prisma: PrismaClient, imageId: string, alt:
   const image = await prisma.productImage.findUnique({ where: { id: imageId }, select: { id: true } });
   if (!image) throw new DomainError("Image not found.");
   return prisma.productImage.update({ where: { id: imageId }, data: { alt }, select: { id: true, productId: true } });
+}
+
+/** Sets (or clears, with null) the colour a photo shows. */
+export async function updateImageColour(prisma: PrismaClient, imageId: string, colour: string | null) {
+  const image = await prisma.productImage.findUnique({ where: { id: imageId }, select: { productId: true } });
+  if (!image) throw new DomainError("Image not found.");
+  await assertImageColour(prisma, image.productId, colour);
+  return prisma.productImage.update({ where: { id: imageId }, data: { colour }, select: { id: true, productId: true } });
 }
 
 export async function moveImage(prisma: PrismaClient, imageId: string, direction: "up" | "down") {

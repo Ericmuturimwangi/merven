@@ -6,6 +6,7 @@ import { formatKES } from "@/lib/money";
 import { compareSizes } from "@/lib/sizes";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import type { PublicVariant } from "@/server/catalogue/repository";
+import { useProductColour } from "./product-colour";
 
 type Props = {
   productName: string;
@@ -29,7 +30,8 @@ export function VariantPicker({ productName, productUrl, priceFromMinor, priceTo
   const sizes = useMemo(() => [...new Set(variants.map((v) => v.size))].sort(compareSizes), [variants]);
 
   // A single option needs no decision, so preselect it (e.g. "One size").
-  const [colour, setColour] = useState<string | null>(colours.length === 1 ? colours[0].name : null);
+  // Shared with the gallery when the page provides it (ProductColourProvider).
+  const { colour, setColour } = useProductColour(colours.length === 1 ? colours[0].name : null);
   const [size, setSize] = useState<string | null>(sizes.length === 1 ? sizes[0] : null);
 
   const selected = variants.find((v) => v.colour === colour && v.size === size) ?? null;

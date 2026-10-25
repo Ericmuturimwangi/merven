@@ -13,7 +13,7 @@ const product: PublicProduct = {
   priceFromMinor: 380000,
   priceToMinor: 420000,
   inStock: true,
-  images: [{ url: "/placeholders/a.webp", alt: "a", width: 1200, height: 1500 }, { url: "https://cdn.example/b.webp", alt: "b", width: 800, height: 800 }],
+  images: [{ url: "/placeholders/a.webp", alt: "a", width: 1200, height: 1500, colour: null }, { url: "https://cdn.example/b.webp", alt: "b", width: 800, height: 800, colour: null }],
   variants: [
     { id: "v1", sku: "SKU-M", size: "M", colour: "White", colourHex: null, priceMinor: 380000, available: true, lowStock: false },
     { id: "v2", sku: "SKU-L", size: "L", colour: "White", colourHex: null, priceMinor: 420000, available: false, lowStock: false },

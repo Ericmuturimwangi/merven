@@ -74,7 +74,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
         <h2 id="images" className="font-display text-2xl">
           Images <span className="text-base text-stone">({product.images.length}/{MAX_IMAGES_PER_PRODUCT})</span>
         </h2>
-        <ImageManager productId={product.id} images={product.images} max={MAX_IMAGES_PER_PRODUCT} />
+        <ImageManager productId={product.id} images={product.images} max={MAX_IMAGES_PER_PRODUCT} colours={[...new Set(product.variants.map((v) => v.colour))]} />
       </section>
     </div>
   );

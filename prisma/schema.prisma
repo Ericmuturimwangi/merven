@@ -89,6 +89,8 @@ model ProductImage {
   alt        String
   width      Int
   height     Int
+  /// The variant colour this photo shows (matches ProductVariant.colour); null = any colour.
+  colour     String?
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
 

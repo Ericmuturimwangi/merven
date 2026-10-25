@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import * as service from "@/server/admin/catalogue-service";
+import { getProductBySlug } from "@/server/catalogue/repository";
 import { productInputSchema, variantInputSchema } from "@/lib/validation/catalogue";
 import { hasTestDb, makeCategory, resetDb, testPrisma } from "../support/db";
 
@@ -132,5 +133,38 @@ describe.skipIf(!hasTestDb)("admin catalogue rules", () => {
     // Renaming without touching the URL still works.
     await service.updateCategory(prisma, categoryId, { ...input, name: "The Dress Edit", slug: "dresses-edit" });
     expect((await prisma.category.findUniqueOrThrow({ where: { id: categoryId } })).slug).toBe("dresses-edit");
+  });
+
+  describe("photo colours", () => {
+    const img = (key: string, colour?: string | null) => ({ key, url: `/media/products/${key}.webp`, width: 800, height: 1000, alt: `Photo ${key}`, colour });
+
+    it("tags a photo with one of the product's colours, and the product page receives it", async () => {
+      const { id } = await service.createProduct(prisma, productInput());
+      await service.addVariant(prisma, id, variantInput({ colour: "Orange" }));
+      await service.addVariant(prisma, id, variantInput({ colour: "Purple", size: "L" }));
+      await service.addProductImage(prisma, id, img("a"));
+      const orange = await service.addProductImage(prisma, id, img("b", "Orange"));
+      await service.setProductStatus(prisma, id, "PUBLISHED");
+      const product = (await getProductBySlug(prisma, "amani-wrap-dress"))!;
+      expect(product.images.map((i) => i.colour)).toEqual([null, "Orange"]);
+
+      await service.updateImageColour(prisma, orange.id, "Purple");
+      await service.updateImageColour(prisma, orange.id, null); // back to "any colour"
+      expect((await prisma.productImage.findUniqueOrThrow({ where: { id: orange.id } })).colour).toBeNull();
+    });
+
+    it("refuses a colour the product doesn't have, on upload and on edit", async () => {
+      const { id } = await service.createProduct(prisma, productInput());
+      await service.addVariant(prisma, id, variantInput({ colour: "Orange" }));
+      await expect(service.addProductImage(prisma, id, img("a", "Green"))).rejects.toMatchObject({ field: "colour" });
+      expect(await prisma.productImage.count()).toBe(0);
+      const photo = await service.addProductImage(prisma, id, img("b"));
+      await expect(service.updateImageColour(prisma, photo.id, "Green")).rejects.toMatchObject({ field: "colour" });
+      // Another product's colour doesn't count.
+      const other = await service.createProduct(prisma, productInput({ name: "Other Dress" }));
+      await service.addVariant(prisma, other.id, variantInput({ colour: "Green" }));
+      await expect(service.updateImageColour(prisma, photo.id, "Green")).rejects.toMatchObject({ field: "colour" });
+      expect((await prisma.productImage.findUniqueOrThrow({ where: { id: photo.id } })).colour).toBeNull();
+    });
   });
 });
